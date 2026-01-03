@@ -1,0 +1,17 @@
+[pi]
+enter list of pis here
+
+[portnainer]
+portainer host
+
+[docker]
+list of hosts that will run docker
+
+[manager]
+host that will be swarm manager
+
+[workers]
+host(s) that will be the workers
+
+[x64]
+list of x64 hosts for specific software

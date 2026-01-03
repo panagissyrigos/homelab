@@ -1,0 +1,13 @@
+---
+- hosts: all
+  become: yes
+
+  pre_tasks:
+    - name: Update apt cache and upgrade all pacakges if needed.
+      apt: upgrade=yes update_cache=yes cache_valid_time=3600
+  tasks:
+    - name: Powershell
+      apt:
+        state: present
+        name:
+          - powershell

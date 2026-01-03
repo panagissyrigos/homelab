@@ -1,0 +1,66 @@
+# code: language=ansible
+---
+- hosts: docker
+  become: yes
+  tasks:
+    - name: Install dependencies (apt)
+      become: true
+      ansible.builtin.apt:
+        name:
+          - python3-docker
+          - ca-certificates
+          - apt-transport-https
+          - curl
+        state: present
+
+    - name: Create APT keyrings dir
+      become: true
+      ansible.builtin.file:
+        path: "/etc/apt/keyrings"
+        state: directory
+        mode: "u=rwx,go=rx"
+
+    - name: Install Docker key (apt)
+      become: true
+      ansible.builtin.get_url:
+        url: "https://download.docker.com/linux/debian/gpg"
+        dest: "/etc/apt/keyrings/docker.asc"
+        mode: "u=rw,go=r"
+        force: true
+
+    - name: Install Docker repo (apt)
+      become: true
+      copy:
+        dest: /etc/apt/sources.list.d/docker.sources
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/debian
+          Suites: trixie
+          Components: stable
+          Signed-By: /etc/apt/keyrings/docker.asc
+        owner: root # File owner
+        group: root # File group
+        mode: "0600" # Permissions (rw-r--r--)
+
+    - name: Set docker daemon config
+      copy:
+        content: |
+          { 
+            "data-root": "/home/workload/docker",
+            "dns": ["192.168.12.227","192.168.12.1"]
+          }
+        dest: /etc/docker/daemon.json
+
+    - name: Update apt cache
+      apt: update_cache=yes cache_valid_time=3600
+
+    - name: Install Docker
+      apt:
+        pkg:
+          - docker-ce-rootless-extras
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present

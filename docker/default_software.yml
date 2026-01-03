@@ -1,0 +1,21 @@
+---
+- hosts: all
+  become: yes
+
+  pre_tasks:
+    - name: Update apt cache and upgrade all pacakges if needed.
+      apt: upgrade=yes update_cache=yes cache_valid_time=3600
+  tasks:
+    - name: Install packages for my homelab
+      ansible.builtin.apt:
+        state: present
+        name:
+          - bind9-dnsutils
+          - iftop
+          - btop
+          - screenfetch
+          - tmux
+          - etherwake
+          - powertop
+          - ffmpeg
+          - cmake

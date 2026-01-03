@@ -1,0 +1,25 @@
+---
+- name: Initialize Docker Swarm
+  hosts: manager
+  become: true
+  tasks:
+    - name: Init swarm on manager
+      docker_swarm:
+        state: present
+        advertise_addr: "{{ ansible_default_ipv4.address }}"
+      register: swarm_info
+
+    - name: Store worker join token
+      set_fact:
+        worker_token: "{{ swarm_info.swarm_facts.JoinTokens.Worker }}"
+
+- name: Join workers to swarm
+  hosts: workers
+  become: true
+  tasks:
+    - name: Join swarm as worker
+      docker_swarm:
+        state: join
+        join_token: "{{ hostvars[groups['manager'][0]]['worker_token'] }}"
+        remote_addrs: ["{{ hostvars[groups['manager'][0]]['ansible_default_ipv4']['address'] }}:2377"]
+

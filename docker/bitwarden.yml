@@ -1,0 +1,101 @@
+- hosts: manager
+  become: true
+  tasks:
+    - name: Check if Bitwarden network exists
+      shell: docker network ls | grep -w bitwarden_net
+      register: bitwarden_net_check
+      ignore_errors: true
+      failed_when: false
+
+    # why aren't we using the docker_network module? because it doesn't work from remote hosts...
+    - name: Create Bitwarden overlay network
+      command: docker network create --driver overlay --scope swarm bitwarden_net
+      when: bitwarden_net_check.rc != 0
+
+    - name: Check if Bitwarden MariaDB service exists
+      shell: docker service ls | grep -w maria_bitwarden_db
+      register: bitwarden_db_check
+      ignore_errors: true
+      failed_when: false
+
+    - name: Create  /home/dockerdata/docker/bitwarden/bitwarden
+      ansible.builtin.file:
+        path: /home/dockerdata/docker/bitwarden/bitwarden
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create  /home/dockerdata/docker/bitwarden/bitwarden_db_data
+      ansible.builtin.file:
+        path: /home/dockerdata/docker/bitwarden/bitwarden_db_data
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create /home/dockerdata/docker/bitwarden/logs
+      ansible.builtin.file:
+        path: /home/dockerdata/docker/bitwarden/logs
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Install bitwarden_maria_db
+      docker_swarm_service:
+        name: maria_bitwarden_db # if you change this, make sure you change the name in the variables of the bitwarden service below
+        image: mariadb:10
+        restart_config:
+          condition: any
+        networks:
+          - name: bitwarden_net
+        env:
+          MARIADB_USER: "bitwarden" # make sure this matches the bitwarden's user name
+          MARIADB_PASSWORD: "M5DeUXu0dqAeIRAJMs6S" # make sure this matches the bitwarden's user password
+          MARIADB_DATABASE: "bitwarden_vault"
+          MARIADB_RANDOM_ROOT_PASSWORD: "true"
+        mounts:
+          - source=/home/dockerdata/docker/bitwarden/bitwarden_db_data, target=/var/lib/mysql, type=bind
+      when: bitwarden_db_check.rc != 0
+
+    # Bitwarden Service Deployment helper
+    - name: Check if Bitwarden service exists
+      shell: docker service ls | grep -w bitwarden
+      register: bitwarden_check
+      ignore_errors: true
+      failed_when: false
+
+    - name: Install bitwarden lite
+      docker_swarm_service:
+        name: bitwarden
+        image: ghcr.io/bitwarden/lite:2025.12.1
+        restart_config:
+          condition: any
+        networks:
+          - name: bitwarden_net
+        publish:
+          - mode: ingress
+            published_port: 9002
+            target_port: 8443
+        env:
+          BW_DOMAIN: raspberrypi
+          BW_DB_PROVIDER: mariadb
+          BW_DB_SERVER: maria_bitwarden_db # service name of the db... not the host, not the ip, not any of that garbasegergakosdhaksrey
+          BW_DB_DATABASE: bitwarden_vault
+          BW_DB_USERNAME: bitwarden # make sure this matches the mariadb user name
+          BW_DB_PASSWORD: M5DeUXu0dqAeIRAJMs6S # make sure this matches the mariadb user password
+          BW_INSTALLATION_ID: 4dbe92cf-7a90-4b9c-8c7c-b3c400ec9263
+          BW_INSTALLATION_KEY: X92QWnYteNTdQX11fbe7
+          BW_PORT_HTTPS: "8443"
+          BW_ENABLE_SSL: "true"
+          BW_ENABLE_SSL_CA: "true"
+          BW_SSL_CERT: "ssl/raspberrypi_server.crt"
+          BW_SSL_KEY: "ssl/raspberrypi_host.key"
+          BW_SSL_CA_CERT: "ssl/bitwarden_ca_ssl.crt"
+        mounts:
+          - source=/home/dockerdata/docker/bitwarden/bitwarden, target=/etc/bitwarden, type=bind
+          - source=/home/dockerdata/docker/bitwarden/logs, target=/var/log/bitwarden, type=bind
+          - source=/home/dockerdata/ssl/certs, target=/etc/bitwarden/ssl, type=bind
+      when:
+        - bitwarden_check.rc != 0

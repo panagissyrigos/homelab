@@ -1,0 +1,125 @@
+- hosts: workers
+  become: true
+  tasks:
+    - name: Create a secure directory with permissions
+      ansible.builtin.file:
+        path: /home/workload/ssl/certs
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+    - name: Copy and overwrite destination server_host.key
+      ansible.builtin.copy:
+        src: server_host.key
+        dest: /home/workload/ssl/certs/server_host.key
+        force: yes
+        backup: yes
+    - name: Copy and overwrite destination server_server.crt
+      ansible.builtin.copy:
+        src: server_server.crt
+        dest: /home/workload/ssl/certs/server_server.crt
+        force: yes
+        backup: yes
+    - name: Copy and overwrite destination bitwarden_ca_ssl.crt
+      ansible.builtin.copy:
+        src: bitwarden_ca_ssl.crt
+        dest: /home/workload/ssl/certs/bitwarden_ca_ssl.crt
+        force: yes
+        backup: yes
+
+- hosts: manager
+  become: true
+  tasks:
+    - name: Create a secure directory with permissions
+      ansible.builtin.file:
+        path: /home/workload/ssl/certs
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+    - name: Copy and overwrite destination server_host.key
+      ansible.builtin.copy:
+        src: server_host.key
+        dest: /home/workload/ssl/certs/server_host.key
+        force: yes
+        backup: yes
+    - name: Copy and overwrite destination server_server.crt
+      ansible.builtin.copy:
+        src: server_server.crt
+        dest: /home/workload/ssl/certs/server_server.crt
+        force: yes
+        backup: yes
+    - name: Copy and overwrite destination bitwarden_ca_ssl.crt
+      ansible.builtin.copy:
+        src: bitwarden_ca_ssl.crt
+        dest: /home/workload/ssl/certs/bitwarden_ca_ssl.crt
+        force: yes
+        backup: yes
+
+    - name: Check if Portainer service exists
+      shell: docker service ls | grep -w portainer
+      register: portainer_check
+      ignore_errors: true
+
+    - name: Deploy Portainer with host networking
+      docker_swarm_service:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        publish:
+          - mode: host
+            published_port: 9000
+            target_port: 9000
+        mounts:
+          - source: /var/run/docker.sock
+            target: /var/run/docker.sock
+            type: bind
+          - source: portainer_data
+            target: /data
+            type: volume
+        placement:
+          constraints:
+            - node.role == manager
+        args:
+          - "--host"
+          - "unix:///var/run/docker.sock"
+      when: portainer_check.rc != 0
+
+- hosts: docker
+  become: true
+  tasks:
+    - name: install glusterfs
+      package:
+        update_cache: yes
+        state: present
+        name:
+          - glusterfs-server
+
+    - name: systemd startup glusterd
+      systemd_service:
+        name: glusterd
+        enabled: true
+        state: started
+
+    - name: add gluster peers
+      gluster_peer:
+        state: present
+        nodes: "{{ groups['docker'] }}"
+
+    - name: create gluster volume
+      gluster_volume:
+        state: present
+        name: glfs1
+        replicas: "{{ groups['docker'] | length }}"
+        bricks: /glfs
+        force: true
+        cluster: "{{ groups['docker'] }}"
+
+    - name: mount gluster volume
+      tags: mount_gluster
+      mount:
+        boot: true
+        src: "localhost:/glfs1"
+        path: /home/dockerdata
+        state: mounted
+        opts: defaults,_netdev
+        fstype: glusterfs

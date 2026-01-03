@@ -1,0 +1,7 @@
+---
+- hosts: all
+  become: yes
+
+  tasks:
+    - name: Update apt cache and upgrade all packages if needed.
+      apt: upgrade=yes update_cache=yes cache_valid_time=3600 autoremove=true
